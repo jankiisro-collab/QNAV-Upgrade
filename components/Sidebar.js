@@ -51,7 +51,7 @@ export const MODULES = [
 
   {
     id: "position",
-    label: "Position Estimation & AI Model",
+    label: "Position Estimation Model",
     icon: BrainCircuit,
   },
 
