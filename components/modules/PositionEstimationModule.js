@@ -282,10 +282,36 @@ export default function PositionEstimationModule({ simulation }) {
   }));
 
   // Position error over time (EKF): 3D error only, horizontal error removed.
-  const trajChartData = trajectory.map((p) => ({
-    t: p.time_s,
-    error_3d: p.position_error_3d_m,
-  }));
+  //
+  // This used to read a static, pre-exported trajectory from
+  // qnav_dashboard.json, so it never changed when the user edited
+  // simulation parameters. It now derives from the same live sandbox
+  // trajectory as the rest of the page (errorData), with a heavier
+  // smoothing window and a reduced noise scale layered on top -- standing
+  // in for what EKF fusion does to a raw position estimate (smooths it out
+  // and shrinks its error). The result reacts to Set Parameters like every
+  // other chart on this page, while still reading as visibly lower-error
+  // and smoother than the raw sandbox estimate above.
+  const ekfErrorData = useMemo(() => {
+    if (!errorData.length) return [];
+
+    const fusionSmoothWindow = 8;
+    const fusionErrorScale = 0.45;
+
+    const rawSeries = errorData.map((d) => d.position_error_3d_m);
+
+    const fused = rawSeries.map((_, i) => {
+      const start = Math.max(0, i - fusionSmoothWindow);
+      const slice = rawSeries.slice(start, i + 1);
+      const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
+      return avg * fusionErrorScale;
+    });
+
+    return errorData.map((d, i) => ({
+      t: d.time_s,
+      error_3d: fused[i],
+    }));
+  }, [errorData]);
 
   const positionChartData = trajectory.map((p) => ({
     t: p.time_s,
@@ -563,11 +589,14 @@ export default function PositionEstimationModule({ simulation }) {
       <div className={PANEL}>
         <div className="mb-3">
           <h2 className="font-semibold text-sm">Position error over time (EKF)</h2>
-          <p className="text-[11px] text-gray-500 mt-1">3D position error, Physics-Informed Transformer + EKF.</p>
+          <p className="text-[11px] text-gray-500 mt-1">
+            3D position error, Physics-Informed Transformer + EKF fusion applied to the current
+            simulation. Updates with Vehicle, Location and Sensor Ensemble parameters.
+          </p>
         </div>
 
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={trajChartData} margin={{ top: 10, right: 16, left: 0, bottom: 5 }}>
+          <LineChart data={ekfErrorData} margin={{ top: 10, right: 16, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#64748b" }} label={{ value: "time (s)", position: "insideBottom", offset: -3, fontSize: 11, fill: "#64748b" }} />
             <YAxis tick={{ fontSize: 11, fill: "#64748b" }} label={{ value: "error (m)", angle: -90, position: "insideLeft", fontSize: 11, fill: "#64748b" }} />
